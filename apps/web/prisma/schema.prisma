@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ─── NextAuth models ──────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── SaaS models ──────────────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  image       String?
+  createdAt   DateTime @default(now())
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+}
+
+model Workspace {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  ownerId            String
+  timezone           String   @default("America/Mexico_City")
+  stripeCustomerId   String?  @unique
+  subscriptionStatus String?
+  planTier           String   @default("free")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  memberships        Membership[]
+  igAccounts         InstagramAccount[]
+  posts              ScheduledPost[]
+  mediaAssets        MediaAsset[]
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role      @default(EDITOR)
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  EDITOR
+  APPROVER
+  CLIENT
+}
+
+// ─── Instagram ────────────────────────────────────────────
+
+model InstagramAccount {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  igUserId          String   @unique
+  username          String
+  profilePictureUrl String?
+  accountType       String
+  facebookPageId    String
+  facebookPageName  String?
+  accessTokenEnc    Bytes
+  tokenExpiresAt    DateTime
+  lastRefreshedAt   DateTime @default(now())
+  status            String   @default("active")
+  scopes            String[]
+  connectedById     String
+  createdAt         DateTime @default(now())
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  posts             ScheduledPost[]
+
+  @@index([workspaceId])
+  @@index([tokenExpiresAt])
+}
+
+// ─── Media ────────────────────────────────────────────────
+
+model MediaAsset {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  uploadedById    String
+  filename        String
+  mimeType        String
+  sizeBytes       Int
+  r2Key           String   @unique
+  publicUrl       String
+  width           Int?
+  height          Int?
+  durationSeconds Float?
+  thumbnailUrl    String?
+  createdAt       DateTime @default(now())
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  postMedia       PostMedia[]
+
+  @@index([workspaceId])
+}
+
+// ─── Posts ────────────────────────────────────────────────
+
+model ScheduledPost {
+  id            String     @id @default(cuid())
+  workspaceId   String
+  igAccountId   String
+  createdById   String
+  type          PostType
+  caption       String     @db.Text
+  hashtags      String?    @db.Text
+  firstComment  String?    @db.Text
+  scheduledAt   DateTime
+  publishedAt   DateTime?
+  igMediaId     String?
+  igContainerId String?
+  status        PostStatus @default(DRAFT)
+  errorMessage  String?    @db.Text
+  errorCode     String?
+  retryCount    Int        @default(0)
+  bullJobId     String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  igAccount     InstagramAccount @relation(fields: [igAccountId], references: [id])
+  media         PostMedia[]
+  insights      PostInsight?
+
+  @@index([scheduledAt, status])
+  @@index([workspaceId, scheduledAt])
+}
+
+enum PostType {
+  FEED_IMAGE
+  CAROUSEL
+  REEL
+  STORY
+}
+
+enum PostStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+  CANCELED
+}
+
+model PostMedia {
+  postId  String
+  mediaId String
+  order   Int           @default(0)
+  post    ScheduledPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media   MediaAsset    @relation(fields: [mediaId], references: [id])
+
+  @@id([postId, mediaId])
+}
+
+model PostInsight {
+  postId      String        @id
+  reach       Int?
+  impressions Int?
+  likes       Int?
+  comments    Int?
+  saves       Int?
+  videoViews  Int?
+  engagement  Float?
+  fetchedAt   DateTime      @default(now())
+  post        ScheduledPost @relation(fields: [postId], references: [id])
+}
+
+// ─── Audit ────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  userId      String?
+  action      String
+  resourceId  String?
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+}
