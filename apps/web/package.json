@@ -1,0 +1,51 @@
+{
+  "name": "@buffer/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@buffer/db": "workspace:*",
+    "@buffer/types": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "@trpc/client": "^11.0.0",
+    "@trpc/react-query": "^11.0.0",
+    "@trpc/server": "^11.0.0",
+    "@tanstack/react-query": "^5.62.0",
+    "next-auth": "^5.0.0-beta.25",
+    "@auth/prisma-adapter": "^2.7.0",
+    "zod": "^3.23.0",
+    "stripe": "^17.0.0",
+    "@t3-oss/env-nextjs": "^0.11.0",
+    "next": "16.2.6",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "superjson": "^2.2.1",
+    "server-only": "^0.0.1",
+    "lucide-react": "^0.468.0",
+    "resend": "^4.0.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "vitest": "^2.1.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "prisma": "^5.22.0"
+  }
+}
