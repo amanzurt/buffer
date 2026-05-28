@@ -1,17 +1,15 @@
-import { S3Client, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
+
+const hasR2 = !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID);
 
 function getR2Client(): S3Client {
-  const accountId = process.env.R2_ACCOUNT_ID ?? "";
   return new S3Client({
     region: "auto",
-    endpoint: accountId
-      ? `https://${accountId}.r2.cloudflarestorage.com`
-      : "http://localhost:9000", // fallback for local dev without R2
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "minioadmin",
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "minioadmin",
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
   });
 }
@@ -28,17 +26,24 @@ export async function getPresignedPutUrl(
   contentType: string,
   maxBytes: number
 ): Promise<string> {
+  if (!hasR2) {
+    // Dev mock: return a data-echo URL that the MediaDropzone can PUT to.
+    // The upload "succeeds" (200) but nothing is stored. The publicUrl will 404,
+    // which is fine for local UI testing.
+    return `/api/dev/upload-mock?key=${encodeURIComponent(key)}`;
+  }
   const client = getR2Client();
   const cmd = new PutObjectCommand({
     Bucket: BUCKET,
     Key: key,
     ContentType: contentType,
-    ContentLength: maxBytes, // enforced by Cloudflare; browser must match
+    ContentLength: maxBytes,
   });
-  return getSignedUrl(client, cmd, { expiresIn: 300 }); // 5 min TTL
+  return getSignedUrl(client, cmd, { expiresIn: 300 });
 }
 
 export async function deleteObject(key: string): Promise<void> {
+  if (!hasR2) return; // no-op in dev
   const client = getR2Client();
   await client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
 }

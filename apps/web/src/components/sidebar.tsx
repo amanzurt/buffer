@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { Calendar, LayoutDashboard, Settings, Instagram } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Calendar, LayoutDashboard, Settings, Instagram, LogOut } from "lucide-react";
 
 interface SidebarProps {
   workspaceSlug: string;
@@ -8,8 +11,10 @@ interface SidebarProps {
 
 export function Sidebar({ workspaceSlug, workspaceName }: SidebarProps) {
   const base = `/app/${workspaceSlug}`;
+  const pathname = usePathname();
+
   const navItems = [
-    { href: `${base}`, icon: LayoutDashboard, label: "Inicio" },
+    { href: base, icon: LayoutDashboard, label: "Inicio", exact: true },
     { href: `${base}/calendar`, icon: Calendar, label: "Calendario" },
     { href: `${base}/accounts`, icon: Instagram, label: "Cuentas IG" },
     { href: `${base}/settings`, icon: Settings, label: "Configuración" },
@@ -24,17 +29,36 @@ export function Sidebar({ workspaceSlug, workspaceName }: SidebarProps) {
         <span className="text-xs text-gray-400">Buffer</span>
       </div>
       <nav className="flex-1 px-2 py-4 space-y-0.5">
-        {navItems.map(({ href, icon: Icon, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-          >
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            {label}
-          </Link>
-        ))}
+        {navItems.map(({ href, icon: Icon, label, exact }) => {
+          const active = exact ? pathname === href : pathname.startsWith(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={[
+                "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
+                active
+                  ? "bg-indigo-50 text-indigo-700 font-medium"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+              ].join(" ")}
+            >
+              <Icon className={["h-4 w-4 flex-shrink-0", active ? "text-indigo-600" : ""].join(" ")} />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
+      <div className="px-2 py-3 border-t border-gray-100">
+        <form action="/api/auth/signout" method="POST">
+          <button
+            type="submit"
+            className="flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            Cerrar sesión
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

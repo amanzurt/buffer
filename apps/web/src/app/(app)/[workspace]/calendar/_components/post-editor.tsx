@@ -51,6 +51,10 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
 
   const createPost = trpc.post.create.useMutation();
   const updatePost = trpc.post.update.useMutation();
+  const deletePost = trpc.post.delete.useMutation({
+    onSuccess: () => { onSuccess?.(); },
+    onError: (err) => { setValidationError(err.message); },
+  });
 
   // Reset / pre-fill form
   useEffect(() => {
@@ -120,7 +124,9 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
     }
   }
 
-  const isPending = createPost.isPending || updatePost.isPending;
+  const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending;
+  const canDelete = isEditing && existingPost &&
+    ["DRAFT", "SCHEDULED", "FAILED", "CANCELED"].includes(existingPost.status);
   const minDatetime = toLocalDatetimeValue(new Date(Date.now() + 5 * 60 * 1000));
 
   if (!open) return null;
@@ -236,17 +242,32 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
-          <button onClick={onClose} className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-            Cancelar
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={isPending}
-            className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
-          >
-            {isPending ? "Guardando…" : isEditing ? "Guardar cambios" : "Programar post"}
-          </button>
+        <div className="border-t border-gray-100 px-5 py-4 space-y-2">
+          <div className="flex gap-3">
+            <button onClick={onClose} className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isPending}
+              className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
+            >
+              {isPending ? "Guardando…" : isEditing ? "Guardar cambios" : "Programar post"}
+            </button>
+          </div>
+          {canDelete && (
+            <button
+              onClick={() => {
+                if (confirm("¿Eliminar este post? Esta acción no se puede deshacer.")) {
+                  deletePost.mutate({ id: postId!, workspaceId });
+                }
+              }}
+              disabled={isPending}
+              className="w-full rounded-lg py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              Eliminar post
+            </button>
+          )}
         </div>
       </aside>
     </div>
