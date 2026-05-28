@@ -1,5 +1,4 @@
 import { Queue, type Job } from "bullmq";
-import IORedis from "ioredis";
 import { db } from "@buffer/db";
 
 // Importamos las funciones de Meta directamente (no vía @buffer/web)
@@ -90,18 +89,20 @@ export async function processTokenRefresh(job: Job<TokenRefreshJobData>): Promis
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const nextRefreshDelay = Math.max(0, newExpiresAt.getTime() - Date.now() - sevenDaysMs);
     const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
-    const conn = new IORedis(redisUrl, {
-      maxRetriesPerRequest: null,
+    const redisUrlParsed = new URL(redisUrl);
+    const connOpts = {
+      host: redisUrlParsed.hostname,
+      port: Number(redisUrlParsed.port) || 6379,
+      password: redisUrlParsed.password || undefined,
       tls: redisUrl.startsWith("rediss://") ? {} : undefined,
-    });
-    const queue = new Queue("token-refresh", { connection: conn });
+    };
+    const queue = new Queue("token-refresh", { connection: connOpts });
     await queue.add(
       "refresh",
       { accountId },
       { delay: nextRefreshDelay, removeOnComplete: true }
     );
     await queue.close();
-    await conn.quit();
 
     await db.auditLog.create({
       data: {
