@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { AccountSelector } from "./account-selector";
 import { MediaDropzone } from "@/components/media-dropzone";
 import { CaptionEditor } from "@/components/caption-editor";
+import { trpc } from "@/lib/trpc/client";
 import type { MediaAsset } from "@buffer/db";
 
 interface Account {
@@ -16,9 +17,11 @@ interface Account {
 interface Props {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   workspaceId: string;
   accounts: Account[];
   defaultDate?: Date;
+  postId?: string;
 }
 
 function toLocalDatetimeValue(d: Date): string {
@@ -29,7 +32,9 @@ function toLocalDatetimeValue(d: Date): string {
   );
 }
 
-export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }: Props) {
+export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, defaultDate, postId }: Props) {
+  const isEditing = !!postId;
+
   const [accountId, setAccountId] = useState("");
   const [postType, setPostType] = useState<"FEED_IMAGE" | "REEL">("FEED_IMAGE");
   const [caption, setCaption] = useState("");
@@ -37,28 +42,46 @@ export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }
   const [firstComment, setFirstComment] = useState("");
   const [media, setMedia] = useState<MediaAsset | null>(null);
   const [scheduledAt, setScheduledAt] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  const { data: existingPost } = trpc.post.get.useQuery(
+    { id: postId!, workspaceId },
+    { enabled: isEditing && open }
+  );
+
+  const createPost = trpc.post.create.useMutation();
+  const updatePost = trpc.post.update.useMutation();
+
+  // Reset / pre-fill form
   useEffect(() => {
     if (!open) return;
-    const base = defaultDate ?? new Date(Date.now() + 15 * 60 * 1000);
-    setScheduledAt(toLocalDatetimeValue(base));
-    setAccountId("");
-    setCaption("");
-    setHashtags([]);
-    setFirstComment("");
-    setMedia(null);
+    if (isEditing && existingPost) {
+      setAccountId(existingPost.igAccountId);
+      setPostType(existingPost.type as "FEED_IMAGE" | "REEL");
+      setCaption(existingPost.caption);
+      setHashtags((existingPost.caption.match(/#\w+/g) ?? []).map((t) => t.toLowerCase()));
+      setFirstComment(existingPost.firstComment ?? "");
+      setScheduledAt(toLocalDatetimeValue(new Date(existingPost.scheduledAt)));
+      const firstMedia = existingPost.media[0]?.media as MediaAsset | undefined;
+      setMedia(firstMedia ?? null);
+    } else if (!isEditing) {
+      const base = defaultDate ?? new Date(Date.now() + 15 * 60 * 1000);
+      setScheduledAt(toLocalDatetimeValue(base));
+      setAccountId("");
+      setCaption("");
+      setHashtags([]);
+      setFirstComment("");
+      setMedia(null);
+    }
     setValidationError(null);
-  }, [open, defaultDate]);
+  }, [open, isEditing, existingPost, defaultDate]);
 
   function validate(): string | null {
     if (!accountId) return "Selecciona una cuenta de Instagram";
     if (!media) return "Sube un archivo de media";
     if (!caption.trim()) return "Escribe un caption";
     if (!scheduledAt) return "Selecciona una fecha y hora";
-    const scheduled = new Date(scheduledAt);
-    if (scheduled.getTime() < Date.now() + 5 * 60 * 1000)
+    if (new Date(scheduledAt).getTime() < Date.now() + 4 * 60 * 1000)
       return "La fecha debe ser al menos 5 minutos en el futuro";
     return null;
   }
@@ -67,78 +90,82 @@ export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }
     const err = validate();
     if (err) { setValidationError(err); return; }
     setValidationError(null);
-    setSubmitting(true);
 
-    const payload = {
-      workspaceId,
-      igAccountId: accountId,
-      type: postType,
-      caption: caption.trim(),
-      hashtags: hashtags.join(" "),
-      firstComment: firstComment.trim() || undefined,
-      scheduledAt: new Date(scheduledAt).toISOString(),
-      mediaIds: media ? [media.id] : [],
-    };
-
-    // Plan D implementará trpc.post.create — por ahora confirmamos el payload
-    console.log("[PostEditor] payload listo para Plan D:", payload);
-    alert("Post preparado — Plan D lo encolará en BullMQ.");
-    setSubmitting(false);
-    onClose();
+    try {
+      if (isEditing && postId) {
+        await updatePost.mutateAsync({
+          id: postId,
+          workspaceId,
+          caption: caption.trim(),
+          hashtags: hashtags.join(" "),
+          firstComment: firstComment.trim() || undefined,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          mediaIds: media ? [media.id] : undefined,
+        });
+      } else {
+        await createPost.mutateAsync({
+          workspaceId,
+          igAccountId: accountId,
+          type: postType,
+          caption: caption.trim(),
+          hashtags: hashtags.join(" "),
+          firstComment: firstComment.trim() || undefined,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+          mediaIds: media ? [media.id] : [],
+        });
+      }
+      onSuccess?.();
+    } catch (err: any) {
+      setValidationError(err.message ?? "Error al guardar el post");
+    }
   }
 
+  const isPending = createPost.isPending || updatePost.isPending;
   const minDatetime = toLocalDatetimeValue(new Date(Date.now() + 5 * 60 * 1000));
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      {/* Overlay */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-
-      {/* Drawer */}
       <aside className="relative ml-auto flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-900">Nuevo post</h2>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-            aria-label="Cerrar"
-          >
+          <h2 className="text-base font-semibold text-gray-900">
+            {isEditing ? "Editar post" : "Nuevo post"}
+          </h2>
+          <button onClick={onClose} className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors" aria-label="Cerrar">
             ✕
           </button>
         </div>
 
-        {/* Body — scrollable */}
+        {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          {/* Tipo de post */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Tipo</label>
-            <div className="flex gap-2">
-              {(["FEED_IMAGE", "REEL"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setPostType(t)}
-                  className={[
-                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                    postType === t
-                      ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                      : "border-gray-200 text-gray-600 hover:border-gray-300",
-                  ].join(" ")}
-                >
-                  {t === "FEED_IMAGE" ? "📸 Imagen" : "🎬 Reel"}
-                </button>
-              ))}
+          {/* Tipo */}
+          {!isEditing && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Tipo</label>
+              <div className="flex gap-2">
+                {(["FEED_IMAGE", "REEL"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setPostType(t)}
+                    className={[
+                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                      postType === t
+                        ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                        : "border-gray-200 text-gray-600 hover:border-gray-300",
+                    ].join(" ")}
+                  >
+                    {t === "FEED_IMAGE" ? "📸 Imagen" : "🎬 Reel"}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Cuenta */}
-          <AccountSelector
-            accounts={accounts}
-            value={accountId}
-            onChange={setAccountId}
-          />
+          <AccountSelector accounts={accounts} value={accountId} onChange={setAccountId} disabled={isEditing} />
 
           {/* Media */}
           <div className="space-y-1">
@@ -154,12 +181,7 @@ export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }
                   <p className="text-xs font-medium text-gray-700 truncate">{media.filename}</p>
                   <p className="text-xs text-gray-400">{(media.sizeBytes / 1024 / 1024).toFixed(1)} MB</p>
                 </div>
-                <button
-                  onClick={() => setMedia(null)}
-                  className="text-xs text-red-500 hover:text-red-700"
-                >
-                  Quitar
-                </button>
+                <button onClick={() => setMedia(null)} className="text-xs text-red-500 hover:text-red-700">Quitar</button>
               </div>
             ) : (
               <MediaDropzone
@@ -173,17 +195,13 @@ export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }
           {/* Caption */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600">Caption</label>
-            <CaptionEditor
-              value={caption}
-              onChange={setCaption}
-              onHashtagsChange={setHashtags}
-            />
+            <CaptionEditor value={caption} onChange={setCaption} onHashtagsChange={setHashtags} />
             {hashtags.length > 0 && (
               <p className="text-xs text-gray-400">{hashtags.length} hashtag{hashtags.length !== 1 ? "s" : ""}</p>
             )}
           </div>
 
-          {/* Fecha y hora */}
+          {/* Fecha */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-gray-600">Programar para</label>
             <input
@@ -219,18 +237,15 @@ export function PostEditor({ open, onClose, workspaceId, accounts, defaultDate }
 
         {/* Footer */}
         <div className="border-t border-gray-100 px-5 py-4 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={onClose} className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             Cancelar
           </button>
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={isPending}
             className="flex-1 rounded-lg bg-indigo-600 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
           >
-            {submitting ? "Programando…" : "Programar post"}
+            {isPending ? "Guardando…" : isEditing ? "Guardar cambios" : "Programar post"}
           </button>
         </div>
       </aside>

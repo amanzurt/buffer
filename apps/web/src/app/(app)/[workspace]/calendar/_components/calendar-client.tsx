@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import FullCalendar from "@fullcalendar/react";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
+import type { EventDropArg, EventClickArg, EventInput } from "@fullcalendar/core";
+import { trpc } from "@/lib/trpc/client";
 import { PostEditor } from "./post-editor";
 
 interface Account {
@@ -16,81 +21,101 @@ interface Props {
   accounts: Account[];
 }
 
-function buildMonthGrid(year: number, month: number): (number | null)[] {
-  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = Array(firstDay).fill(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
-}
-
-const DAY_LABELS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-const MONTH_LABELS = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
+const STATUS_COLORS: Record<string, string> = {
+  SCHEDULED: "#6366f1",   // indigo
+  PUBLISHING: "#f59e0b",  // amber
+  PUBLISHED: "#22c55e",   // green
+  FAILED: "#ef4444",      // red
+  CANCELED: "#9ca3af",    // gray
+  DRAFT: "#d1d5db",
+};
 
 export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth());
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editPostId, setEditPostId] = useState<string | undefined>();
   const [defaultDate, setDefaultDate] = useState<Date | undefined>();
+  const [range, setRange] = useState(() => {
+    const now = new Date();
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      to: new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59).toISOString(),
+    };
+  });
 
-  function prev() {
-    if (month === 0) { setMonth(11); setYear(y => y - 1); }
-    else setMonth(m => m - 1);
-  }
-  function next() {
-    if (month === 11) { setMonth(0); setYear(y => y + 1); }
-    else setMonth(m => m + 1);
-  }
+  const { data: posts, refetch } = trpc.post.list.useQuery(
+    { workspaceId, from: range.from, to: range.to },
+    { refetchInterval: 30_000 }
+  );
 
-  function openEditorForDay(day: number) {
-    const d = new Date(year, month, day, now.getHours() + 1, 0, 0);
-    if (d.getTime() < Date.now() + 5 * 60 * 1000) {
-      d.setTime(Date.now() + 10 * 60 * 1000);
-    }
+  const updatePost = trpc.post.update.useMutation({
+    onSuccess: () => { refetch(); },
+  });
+
+  const events: EventInput[] = (posts ?? []).map((p) => ({
+    id: p.id,
+    title: `@${p.igAccount?.username ?? "?"} · ${p.caption.slice(0, 30)}${p.caption.length > 30 ? "…" : ""}`,
+    start: p.scheduledAt,
+    backgroundColor: STATUS_COLORS[p.status] ?? "#6366f1",
+    borderColor: STATUS_COLORS[p.status] ?? "#6366f1",
+    textColor: "#fff",
+    extendedProps: { status: p.status },
+  }));
+
+  const handleDateClick = useCallback((arg: DateClickArg) => {
+    const d = arg.date;
+    if (d.getTime() < Date.now() - 60_000) return;
+    d.setHours(new Date().getHours() + 1, 0, 0, 0);
+    if (d.getTime() < Date.now() + 5 * 60_000) d.setTime(Date.now() + 10 * 60_000);
+    setEditPostId(undefined);
     setDefaultDate(d);
     setEditorOpen(true);
-  }
+  }, []);
 
-  const cells = buildMonthGrid(year, month);
-  const today = now.getDate();
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
+  const handleEventClick = useCallback((arg: EventClickArg) => {
+    const status = arg.event.extendedProps?.status;
+    if (["PUBLISHED", "PUBLISHING"].includes(status)) return;
+    setEditPostId(arg.event.id);
+    setDefaultDate(undefined);
+    setEditorOpen(true);
+  }, []);
+
+  const handleEventDrop = useCallback(async (arg: EventDropArg) => {
+    const newDate = arg.event.start;
+    if (!newDate || newDate.getTime() < Date.now() + 4 * 60_000) {
+      arg.revert();
+      return;
+    }
+    try {
+      await updatePost.mutateAsync({
+        id: arg.event.id,
+        workspaceId,
+        scheduledAt: newDate.toISOString(),
+      });
+    } catch {
+      arg.revert();
+    }
+  }, [updatePost, workspaceId]);
+
   const hasActiveAccounts = accounts.some((a) => a.status === "active");
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-6 max-w-5xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Calendario</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {MONTH_LABELS[month]} {year}
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-semibold text-gray-900">Calendario</h1>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={prev}
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
-              aria-label="Mes anterior"
-            >
-              ←
-            </button>
-            <button
-              onClick={next}
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 transition-colors"
-              aria-label="Mes siguiente"
-            >
-              →
-            </button>
+          {/* Legend */}
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+            {Object.entries(STATUS_COLORS).map(([s, c]) => (
+              <span key={s} className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />
+                {s.charAt(0) + s.slice(1).toLowerCase()}
+              </span>
+            ))}
           </div>
           {hasActiveAccounts && (
             <button
-              onClick={() => { setDefaultDate(undefined); setEditorOpen(true); }}
+              onClick={() => { setEditPostId(undefined); setDefaultDate(undefined); setEditorOpen(true); }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
             >
               + Nuevo post
@@ -99,7 +124,6 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
         </div>
       </div>
 
-      {/* No accounts banner */}
       {!hasActiveAccounts && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Conecta una cuenta de Instagram antes de programar posts.{" "}
@@ -109,61 +133,52 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
         </div>
       )}
 
-      {/* Calendar grid */}
-      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-gray-100">
-          {DAY_LABELS.map((d) => (
-            <div key={d} className="py-2 text-center text-xs font-medium text-gray-400">
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* Day cells */}
-        <div className="grid grid-cols-7">
-          {cells.map((day, i) => {
-            const isPast = day !== null && isCurrentMonth && day < today;
-            const isToday = day !== null && isCurrentMonth && day === today;
-            return (
-              <div
-                key={i}
-                onClick={() => day && !isPast && hasActiveAccounts && openEditorForDay(day)}
-                className={[
-                  "relative min-h-[72px] border-b border-r border-gray-100 p-2 text-sm",
-                  "last:border-r-0 [&:nth-child(7n)]:border-r-0",
-                  day && !isPast && hasActiveAccounts ? "cursor-pointer hover:bg-indigo-50 transition-colors" : "",
-                  isPast ? "bg-gray-50" : "",
-                  isToday ? "bg-indigo-50" : "",
-                ].join(" ")}
-              >
-                {day && (
-                  <span
-                    className={[
-                      "inline-flex h-6 w-6 items-center justify-center rounded-full text-xs",
-                      isToday ? "bg-indigo-600 text-white font-semibold" : "text-gray-700",
-                      isPast ? "text-gray-300" : "",
-                    ].join(" ")}
-                  >
-                    {day}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {/* FullCalendar */}
+      <div className="rounded-xl border border-gray-200 bg-white overflow-hidden fc-buffer">
+        <FullCalendar
+          plugins={[dayGridPlugin, interactionPlugin]}
+          initialView="dayGridMonth"
+          locale="es"
+          firstDay={1}
+          height="auto"
+          headerToolbar={{
+            left: "prev,next today",
+            center: "title",
+            right: "",
+          }}
+          events={events}
+          editable={hasActiveAccounts}
+          droppable={false}
+          selectable={false}
+          dateClick={hasActiveAccounts ? handleDateClick : undefined}
+          eventClick={handleEventClick}
+          eventDrop={handleEventDrop}
+          datesSet={(arg) => {
+            setRange({
+              from: arg.startStr,
+              to: arg.endStr,
+            });
+          }}
+          eventDisplay="block"
+          dayMaxEvents={3}
+          moreLinkText={(n) => `+${n} más`}
+          noEventsText="Sin posts este período"
+          buttonText={{ today: "Hoy" }}
+        />
       </div>
 
-      <p className="mt-3 text-xs text-gray-400">
-        Haz click en un día para programar un post. FullCalendar con drag-and-drop llega en Plan D.
+      <p className="mt-2 text-xs text-gray-400">
+        Arrastra un post para reprogramarlo. Click en un día vacío para crear uno nuevo.
       </p>
 
       <PostEditor
         open={editorOpen}
-        onClose={() => setEditorOpen(false)}
+        onClose={() => { setEditorOpen(false); setEditPostId(undefined); }}
         workspaceId={workspaceId}
         accounts={accounts}
         defaultDate={defaultDate}
+        postId={editPostId}
+        onSuccess={() => { refetch(); setEditorOpen(false); setEditPostId(undefined); }}
       />
     </div>
   );
