@@ -1,5 +1,6 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
+import { processTokenRefresh } from "./jobs/token-refresh";
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 
@@ -13,7 +14,7 @@ connection.on("error", (err) => console.error("❌ Redis error:", err.message));
 
 const testQueue = new Queue("test-queue", { connection });
 
-const worker = new Worker(
+const testWorker = new Worker(
   "test-queue",
   async (job) => {
     console.log(`[worker] Procesando job ${job.id}:`, job.data);
@@ -24,9 +25,27 @@ const worker = new Worker(
   { connection, concurrency: 5 }
 );
 
-worker.on("completed", (job) => console.log(`✅ Job ${job.id} completado`));
-worker.on("failed", (job, err) =>
+testWorker.on("completed", (job) => console.log(`✅ Job ${job.id} completado`));
+testWorker.on("failed", (job, err) =>
   console.error(`❌ Job ${job?.id} fallido:`, err.message)
+);
+
+const tokenRefreshWorker = new Worker(
+  "token-refresh",
+  processTokenRefresh,
+  {
+    connection,
+    concurrency: 5,
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 5000 },
+  }
+);
+
+tokenRefreshWorker.on("completed", (job) =>
+  console.log(`✅ [token-refresh] Job ${job.id} completado`)
+);
+tokenRefreshWorker.on("failed", (job, err) =>
+  console.error(`❌ [token-refresh] Job ${job?.id} fallido:`, err.message)
 );
 
 console.log("🚀 Worker iniciado, esperando jobs...");
@@ -40,7 +59,7 @@ if (process.env.NODE_ENV !== "production") {
 
 process.on("SIGTERM", async () => {
   console.log("Apagando worker...");
-  await worker.close();
+  await Promise.all([testWorker.close(), tokenRefreshWorker.close()]);
   await connection.quit();
   process.exit(0);
 });
