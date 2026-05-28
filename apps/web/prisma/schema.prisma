@@ -3,12 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL_UNPOOLED")
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
-
-// ─── NextAuth models ──────────────────────────────────────
 
 model Account {
   id                String  @id @default(cuid())
@@ -16,15 +13,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -45,75 +41,63 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// ─── SaaS models ──────────────────────────────────────────
-
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
+  id          String       @id @default(cuid())
+  email       String       @unique
   name        String?
   image       String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime     @default(now())
   accounts    Account[]
-  sessions    Session[]
   memberships Membership[]
+  sessions    Session[]
 }
 
 model Workspace {
-  id                 String   @id @default(cuid())
+  id                 String             @id @default(cuid())
   name               String
-  slug               String   @unique
+  slug               String             @unique
   ownerId            String
-  timezone           String   @default("America/Mexico_City")
-  stripeCustomerId   String?  @unique
+  timezone           String             @default("America/Mexico_City")
+  stripeCustomerId   String?            @unique
   subscriptionStatus String?
-  planTier           String   @default("free")
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  memberships        Membership[]
+  planTier           String             @default("free")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   igAccounts         InstagramAccount[]
-  posts              ScheduledPost[]
   mediaAssets        MediaAsset[]
+  memberships        Membership[]
+  posts              ScheduledPost[]
 }
 
 model Membership {
   id          String    @id @default(cuid())
   userId      String
   workspaceId String
-  role        Role      @default(EDITOR)
+  role        String    @default("EDITOR")
   createdAt   DateTime  @default(now())
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workspaceId])
   @@index([workspaceId])
 }
 
-enum Role {
-  OWNER
-  ADMIN
-  EDITOR
-  APPROVER
-  CLIENT
-}
-
-// ─── Instagram ────────────────────────────────────────────
-
 model InstagramAccount {
-  id                String   @id @default(cuid())
+  id                String          @id @default(cuid())
   workspaceId       String
-  igUserId          String   @unique
+  igUserId          String          @unique
   username          String
   profilePictureUrl String?
   accountType       String
   facebookPageId    String
   facebookPageName  String?
-  accessTokenEnc    Bytes
+  accessTokenEnc    String
   tokenExpiresAt    DateTime
-  lastRefreshedAt   DateTime @default(now())
-  status            String   @default("active")
-  scopes            String[]
+  lastRefreshedAt   DateTime        @default(now())
+  status            String          @default("active")
+  scopes            String          @default("[]")
   connectedById     String
-  createdAt         DateTime @default(now())
+  createdAt         DateTime        @default(now())
   workspace         Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   posts             ScheduledPost[]
 
@@ -121,81 +105,61 @@ model InstagramAccount {
   @@index([tokenExpiresAt])
 }
 
-// ─── Media ────────────────────────────────────────────────
-
 model MediaAsset {
-  id              String   @id @default(cuid())
+  id              String      @id @default(cuid())
   workspaceId     String
   uploadedById    String
   filename        String
   mimeType        String
   sizeBytes       Int
-  r2Key           String   @unique
+  r2Key           String      @unique
   publicUrl       String
   width           Int?
   height          Int?
   durationSeconds Float?
   thumbnailUrl    String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime    @default(now())
   workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   postMedia       PostMedia[]
 
   @@index([workspaceId])
 }
 
-// ─── Posts ────────────────────────────────────────────────
-
 model ScheduledPost {
-  id            String     @id @default(cuid())
+  id            String           @id @default(cuid())
   workspaceId   String
   igAccountId   String
   createdById   String
-  type          PostType
-  caption       String     @db.Text
-  hashtags      String?    @db.Text
-  firstComment  String?    @db.Text
+  type          String
+  caption       String
+  hashtags      String?
+  firstComment  String?
   scheduledAt   DateTime
   publishedAt   DateTime?
   igMediaId     String?
   igContainerId String?
-  status        PostStatus @default(DRAFT)
-  errorMessage  String?    @db.Text
+  status        String           @default("DRAFT")
+  errorMessage  String?
   errorCode     String?
-  retryCount    Int        @default(0)
+  retryCount    Int              @default(0)
   bullJobId     String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  igAccount     InstagramAccount @relation(fields: [igAccountId], references: [id])
-  media         PostMedia[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   insights      PostInsight?
+  media         PostMedia[]
+  igAccount     InstagramAccount @relation(fields: [igAccountId], references: [id])
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([scheduledAt, status])
   @@index([workspaceId, scheduledAt])
-}
-
-enum PostType {
-  FEED_IMAGE
-  CAROUSEL
-  REEL
-  STORY
-}
-
-enum PostStatus {
-  DRAFT
-  SCHEDULED
-  PUBLISHING
-  PUBLISHED
-  FAILED
-  CANCELED
 }
 
 model PostMedia {
   postId  String
   mediaId String
   order   Int           @default(0)
-  post    ScheduledPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   media   MediaAsset    @relation(fields: [mediaId], references: [id])
+  post    ScheduledPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@id([postId, mediaId])
 }
@@ -213,15 +177,13 @@ model PostInsight {
   post        ScheduledPost @relation(fields: [postId], references: [id])
 }
 
-// ─── Audit ────────────────────────────────────────────────
-
 model AuditLog {
   id          String   @id @default(cuid())
   workspaceId String?
   userId      String?
   action      String
   resourceId  String?
-  metadata    Json?
+  metadata    String?
   ipAddress   String?
   createdAt   DateTime @default(now())
 
