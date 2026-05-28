@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { processTokenRefresh } from "./jobs/token-refresh";
+import { processPublishPost } from "./jobs/publish-post";
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 
@@ -48,6 +49,24 @@ tokenRefreshWorker.on("failed", (job, err) =>
   console.error(`❌ [token-refresh] Job ${job?.id} fallido:`, err.message)
 );
 
+const publishPostWorker = new Worker(
+  "publish-post",
+  processPublishPost,
+  {
+    connection,
+    concurrency: 10,
+    removeOnComplete: { count: 1000 },
+    removeOnFail: { count: 5000 },
+  }
+);
+
+publishPostWorker.on("completed", (job) =>
+  console.log(`✅ [publish-post] Job ${job.id} completado`)
+);
+publishPostWorker.on("failed", (job, err) =>
+  console.error(`❌ [publish-post] Job ${job?.id} fallido:`, err.message)
+);
+
 console.log("🚀 Worker iniciado, esperando jobs...");
 
 if (process.env.NODE_ENV !== "production") {
@@ -59,7 +78,7 @@ if (process.env.NODE_ENV !== "production") {
 
 process.on("SIGTERM", async () => {
   console.log("Apagando worker...");
-  await Promise.all([testWorker.close(), tokenRefreshWorker.close()]);
+  await Promise.all([testWorker.close(), tokenRefreshWorker.close(), publishPostWorker.close()]);
   await connection.quit();
   process.exit(0);
 });
