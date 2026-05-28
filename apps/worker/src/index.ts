@@ -1,7 +1,14 @@
+import * as Sentry from "@sentry/node";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 import { processTokenRefresh } from "./jobs/token-refresh";
 import { processPublishPost } from "./jobs/publish-post";
+
+const sentryDsn = process.env.SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({ dsn: sentryDsn, tracesSampleRate: 0.1 });
+  console.log("✅ Sentry inicializado");
+}
 
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 
@@ -57,9 +64,10 @@ const tokenRefreshWorker = new Worker(
 tokenRefreshWorker.on("completed", (job) =>
   console.log(`✅ [token-refresh] Job ${job.id} completado`)
 );
-tokenRefreshWorker.on("failed", (job, err) =>
-  console.error(`❌ [token-refresh] Job ${job?.id} fallido:`, err.message)
-);
+tokenRefreshWorker.on("failed", (job, err) => {
+  console.error(`❌ [token-refresh] Job ${job?.id} fallido:`, err.message);
+  Sentry.captureException(err, { extra: { jobId: job?.id, data: job?.data } });
+});
 
 const publishPostWorker = new Worker(
   "publish-post",
@@ -75,9 +83,10 @@ const publishPostWorker = new Worker(
 publishPostWorker.on("completed", (job) =>
   console.log(`✅ [publish-post] Job ${job.id} completado`)
 );
-publishPostWorker.on("failed", (job, err) =>
-  console.error(`❌ [publish-post] Job ${job?.id} fallido:`, err.message)
-);
+publishPostWorker.on("failed", (job, err) => {
+  console.error(`❌ [publish-post] Job ${job?.id} fallido:`, err.message);
+  Sentry.captureException(err, { extra: { jobId: job?.id, postId: (job?.data as any)?.postId } });
+});
 
 console.log("🚀 Worker iniciado, esperando jobs...");
 

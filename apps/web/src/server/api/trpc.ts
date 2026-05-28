@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
+import * as Sentry from "@sentry/nextjs";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -12,6 +13,14 @@ export const createTRPCContext = async (opts: { headers: Headers }) => {
 const t = initTRPC.context<typeof createTRPCContext>().create({
   transformer: superjson,
   errorFormatter({ shape, error }) {
+    if (
+      error.code !== "UNAUTHORIZED" &&
+      error.code !== "FORBIDDEN" &&
+      error.code !== "NOT_FOUND" &&
+      error.code !== "BAD_REQUEST"
+    ) {
+      Sentry.captureException(error.cause ?? error);
+    }
     return {
       ...shape,
       data: {

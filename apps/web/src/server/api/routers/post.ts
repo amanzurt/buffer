@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { enqueuePublishPost, cancelPublishPost } from "@/lib/queue";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const postTypes = ["FEED_IMAGE", "CAROUSEL", "REEL", "STORY"] as const;
 
@@ -66,6 +67,10 @@ export const postRouter = createTRPCRouter({
         where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
       });
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+
+      if (!checkRateLimit(`post.create:${input.workspaceId}`, 20, 60_000)) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Demasiadas solicitudes. Espera un momento." });
+      }
 
       const scheduledAt = new Date(input.scheduledAt);
       if (scheduledAt.getTime() < Date.now() + 4 * 60 * 1000) {

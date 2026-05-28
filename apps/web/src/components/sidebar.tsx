@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Calendar, Image, Settings, Instagram } from "lucide-react";
+import { Calendar, LayoutDashboard, Settings, Instagram } from "lucide-react";
 
 interface SidebarProps {
   workspaceSlug: string;
@@ -9,6 +9,7 @@ interface SidebarProps {
 export function Sidebar({ workspaceSlug, workspaceName }: SidebarProps) {
   const base = `/app/${workspaceSlug}`;
   const navItems = [
+    { href: `${base}`, icon: LayoutDashboard, label: "Inicio" },
     { href: `${base}/calendar`, icon: Calendar, label: "Calendario" },
     { href: `${base}/accounts`, icon: Instagram, label: "Cuentas IG" },
     { href: `${base}/settings`, icon: Settings, label: "Configuración" },

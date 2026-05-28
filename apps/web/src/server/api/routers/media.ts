@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { getPresignedPutUrl, getPublicUrl, deleteObject } from "@/lib/r2";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { randomUUID } from "crypto";
 
 export const mediaRouter = createTRPCRouter({
@@ -17,6 +18,10 @@ export const mediaRouter = createTRPCRouter({
         where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
       });
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+
+      if (!checkRateLimit(`media.upload:${ctx.userId}`, 30, 60_000)) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Demasiados uploads. Espera un momento." });
+      }
 
       const ext = input.filename.split(".").pop() ?? "bin";
       const key = `media/${input.workspaceId}/${randomUUID()}.${ext}`;
