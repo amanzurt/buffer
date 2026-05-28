@@ -4,10 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev",
+    "dev:web": "pnpm --filter @buffer/web dev",
+    "dev:worker": "pnpm --filter @buffer/worker dev",
+    "dev:services": "docker compose up -d redis",
+    "dev:stop": "docker compose stop",
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "db:migrate": "pnpm --filter @buffer/web exec prisma migrate dev",
+    "db:studio": "pnpm --filter @buffer/web exec prisma studio"
   },
   "devDependencies": {
     "turbo": "^2.3.0"
