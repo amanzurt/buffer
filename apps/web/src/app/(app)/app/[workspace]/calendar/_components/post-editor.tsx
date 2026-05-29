@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { AccountSelector } from "./account-selector";
 import { PostPreview } from "./post-preview";
+import { CaptionTemplates } from "./caption-templates";
 import { MediaDropzone } from "@/components/media-dropzone";
 import { CaptionEditor } from "@/components/caption-editor";
 import { trpc } from "@/lib/trpc/client";
@@ -247,7 +248,10 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
 
           {/* Caption */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Caption</label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-xs font-medium text-gray-600">Caption</label>
+              <CaptionTemplates workspaceId={workspaceId} currentCaption={caption} onInsert={setCaption} />
+            </div>
             <CaptionEditor value={caption} onChange={setCaption} onHashtagsChange={setHashtags} />
             {hashtags.length > 0 && (
               <p className="text-xs text-gray-400">{hashtags.length} hashtag{hashtags.length !== 1 ? "s" : ""}</p>
