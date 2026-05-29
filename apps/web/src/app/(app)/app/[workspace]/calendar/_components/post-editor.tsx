@@ -66,6 +66,10 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
     onSuccess: () => { onSuccess?.(); },
     onError: (err) => { setValidationError(err.message); },
   });
+  const duplicatePost = trpc.post.duplicate.useMutation({
+    onSuccess: () => { onSuccess?.(); },
+    onError: (err) => { setValidationError(err.message); },
+  });
 
   // Reset / pre-fill form
   useEffect(() => {
@@ -139,7 +143,7 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
   }
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
-  const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending;
+  const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending || duplicatePost.isPending;
   const canDelete = isEditing && existingPost &&
     ["DRAFT", "SCHEDULED", "FAILED", "CANCELED"].includes(existingPost.status);
   const minDatetime = toLocalDatetimeValue(new Date(Date.now() + 5 * 60 * 1000));
@@ -298,6 +302,15 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
               {isPending ? "Guardando…" : isEditing ? "Guardar cambios" : "Programar post"}
             </button>
           </div>
+          {isEditing && existingPost && (
+            <button
+              onClick={() => duplicatePost.mutate({ id: postId!, workspaceId })}
+              disabled={isPending}
+              className="w-full rounded-lg py-1.5 text-xs text-indigo-600 hover:bg-indigo-50 transition-colors disabled:opacity-50"
+            >
+              Duplicar post (+1 día)
+            </button>
+          )}
           {canDelete && (
             <button
               onClick={() => {

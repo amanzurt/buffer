@@ -121,6 +121,59 @@ export const postRouter = createTRPCRouter({
       return updated;
     }),
 
+  duplicate: protectedProcedure
+    .input(z.object({ id: z.string(), workspaceId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const membership = await ctx.db.membership.findUnique({
+        where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
+      });
+      if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+
+      const source = await ctx.db.scheduledPost.findFirst({
+        where: { id: input.id, workspaceId: input.workspaceId },
+        include: { media: { orderBy: { order: "asc" } } },
+      });
+      if (!source) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Schedule the copy one day after the original, clamped to the future.
+      const minTime = Date.now() + 10 * 60 * 1000;
+      let scheduledAt = new Date(source.scheduledAt.getTime() + 24 * 60 * 60 * 1000);
+      if (scheduledAt.getTime() < minTime) scheduledAt = new Date(minTime);
+
+      const post = await ctx.db.scheduledPost.create({
+        data: {
+          workspaceId: input.workspaceId,
+          igAccountId: source.igAccountId,
+          createdById: ctx.userId,
+          type: source.type,
+          caption: source.caption,
+          hashtags: source.hashtags,
+          firstComment: source.firstComment,
+          scheduledAt,
+          status: "SCHEDULED",
+          media: { create: source.media.map((m) => ({ mediaId: m.mediaId, order: m.order })) },
+        },
+      });
+
+      const bullJobId = await enqueuePublishPost(post.id, scheduledAt);
+      const updated = await ctx.db.scheduledPost.update({
+        where: { id: post.id },
+        data: { bullJobId },
+      });
+
+      await ctx.db.auditLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          userId: ctx.userId,
+          action: "post.duplicated",
+          resourceId: post.id,
+          metadata: JSON.stringify({ from: source.id }),
+        },
+      });
+
+      return updated;
+    }),
+
   update: protectedProcedure
     .input(z.object({
       id: z.string(),
