@@ -1,3 +1,5 @@
+// Load .env before any import that reads env vars (e.g. @buffer/db → Prisma).
+import "dotenv/config";
 import * as Sentry from "@sentry/node";
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";

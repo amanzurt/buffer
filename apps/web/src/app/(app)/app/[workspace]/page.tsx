@@ -79,7 +79,6 @@ export default async function WorkspaceDashboard({ params }: Props) {
     where: { workspaceId: workspace.id, status: "active" },
   });
 
-  const totalThisMonth = stats.reduce((s, r) => s + r._count._all, 0);
   const publishedThisMonth = countByStatus["PUBLISHED"] ?? 0;
   const failedThisMonth = countByStatus["FAILED"] ?? 0;
 
@@ -127,7 +126,7 @@ export default async function WorkspaceDashboard({ params }: Props) {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-gray-700">Publicados recientemente</h2>
             {recentPublished.length > 0 && (
-              <span className="text-xs text-gray-400">{totalThisMonth} este mes</span>
+              <span className="text-xs text-gray-400">{publishedThisMonth} este mes</span>
             )}
           </div>
           {recentPublished.length === 0 ? (

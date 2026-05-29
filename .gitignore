@@ -6,5 +6,17 @@ node_modules/
 dist/
 .turbo/
 *.tsbuildinfo
-.claude-flow/sessions/
-.claude-flow/logs/
+.claude-flow/
+.claude/
+.mcp.json
+.playwright-mcp/
+
+# Local SQLite dev databases (never commit binary DBs)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# RuVector / claude-flow generated memory graphs
+ruvector.db
+**/ruvector.db

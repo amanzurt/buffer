@@ -165,8 +165,6 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
     return;
   }
 
-  const token = decryptToken(post.igAccount.accessTokenEnc, ENC_KEY);
-  const igUserId = post.igAccount.igUserId;
   const firstMedia = post.media[0]?.media;
 
   if (!firstMedia) {
@@ -177,6 +175,32 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
 
   // Marcar como publicando
   await db.scheduledPost.update({ where: { id: postId }, data: { status: "PUBLISHING" } });
+
+  // ── Dev dry-run ───────────────────────────────────────────────────────────
+  // Simula el flujo de la Graph API sin llamar a Meta ni descifrar el token.
+  // Permite ver SCHEDULED → PUBLISHING → PUBLISHED en localhost sin app de Meta.
+  if (process.env.PUBLISH_DRY_RUN === "true") {
+    console.log(`🧪 [publish-post] DRY-RUN: simulando publicación de ${postId} (${post.type})…`);
+    await new Promise((r) => setTimeout(r, 1500));
+    const fakeMediaId = `dryrun_${Date.now()}`;
+    await db.scheduledPost.update({
+      where: { id: postId },
+      data: { status: "PUBLISHED", publishedAt: new Date(), igMediaId: fakeMediaId },
+    });
+    await db.auditLog.create({
+      data: {
+        workspaceId: post.workspaceId,
+        action: "post.published",
+        resourceId: postId,
+        metadata: JSON.stringify({ igMediaId: fakeMediaId, type: post.type, dryRun: true, account: post.igAccount.username }),
+      },
+    });
+    console.log(`✅ [publish-post] DRY-RUN: post ${postId} marcado PUBLISHED — igMediaId: ${fakeMediaId}`);
+    return;
+  }
+
+  const token = decryptToken(post.igAccount.accessTokenEnc, ENC_KEY);
+  const igUserId = post.igAccount.igUserId;
 
   try {
     let igMediaId: string;

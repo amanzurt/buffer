@@ -10,8 +10,8 @@ export const postRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({
       workspaceId: z.string(),
-      from: z.string().datetime(),
-      to: z.string().datetime(),
+      from: z.string().datetime({ offset: true }),
+      to: z.string().datetime({ offset: true }),
     }))
     .query(async ({ ctx, input }) => {
       const membership = await ctx.db.membership.findUnique({
@@ -59,7 +59,7 @@ export const postRouter = createTRPCRouter({
       caption: z.string().max(2200),
       hashtags: z.string().optional(),
       firstComment: z.string().max(2200).optional(),
-      scheduledAt: z.string().datetime(),
+      scheduledAt: z.string().datetime({ offset: true }),
       mediaIds: z.array(z.string()).min(1).max(10),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -128,7 +128,7 @@ export const postRouter = createTRPCRouter({
       caption: z.string().max(2200).optional(),
       hashtags: z.string().optional(),
       firstComment: z.string().max(2200).optional(),
-      scheduledAt: z.string().datetime().optional(),
+      scheduledAt: z.string().datetime({ offset: true }).optional(),
       mediaIds: z.array(z.string()).min(1).max(10).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
