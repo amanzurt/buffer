@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Calendar, LayoutDashboard, Settings, Instagram, LogOut } from "lucide-react";
+import { Calendar, LayoutDashboard, Settings, Instagram, LogOut, BarChart3 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 
 interface SidebarProps {
@@ -18,6 +18,7 @@ export function Sidebar({ workspaceSlug, workspaceName, workspaceId }: SidebarPr
   const navItems = [
     { href: base, icon: LayoutDashboard, label: "Inicio", exact: true },
     { href: `${base}/calendar`, icon: Calendar, label: "Calendario" },
+    { href: `${base}/analytics`, icon: BarChart3, label: "Analytics" },
     { href: `${base}/accounts`, icon: Instagram, label: "Cuentas IG" },
     { href: `${base}/settings`, icon: Settings, label: "Configuración" },
   ];

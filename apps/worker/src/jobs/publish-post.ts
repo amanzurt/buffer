@@ -203,6 +203,34 @@ async function notify(
   }
 }
 
+// ── Mock insights (dev) ──────────────────────────────────────────────────────
+// Real insights come from the Graph API via a separate fetch-insights job 24h
+// after publish (Fase 2). In dev dry-run we generate plausible numbers so the
+// Analytics view has data to show.
+
+function rand(min: number, max: number): number {
+  return Math.floor(min + Math.random() * (max - min));
+}
+
+async function createMockInsights(postId: string, isVideo: boolean): Promise<void> {
+  try {
+    const reach = rand(400, 6000);
+    const impressions = Math.floor(reach * (1.1 + Math.random() * 0.6));
+    const likes = Math.floor(reach * (0.04 + Math.random() * 0.12));
+    const comments = Math.floor(likes * (0.03 + Math.random() * 0.15));
+    const saves = Math.floor(likes * (0.05 + Math.random() * 0.25));
+    const videoViews = isVideo ? Math.floor(reach * (0.6 + Math.random() * 0.5)) : null;
+    const engagement = Math.round(((likes + comments + saves) / reach) * 1000) / 10;
+    await db.postInsight.upsert({
+      where: { postId },
+      update: { reach, impressions, likes, comments, saves, videoViews, engagement, fetchedAt: new Date() },
+      create: { postId, reach, impressions, likes, comments, saves, videoViews, engagement },
+    });
+  } catch (e: any) {
+    console.warn(`[publish-post] No se pudieron crear insights mock: ${e.message}`);
+  }
+}
+
 // ── Reel polling ──────────────────────────────────────────────────────────────
 
 const REEL_POLL_INTERVAL_MS = 5_000;
@@ -295,6 +323,7 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
         metadata: JSON.stringify({ igMediaId: fakeMediaId, type: post.type, dryRun: true, account: post.igAccount.username }),
       },
     });
+    await createMockInsights(postId, post.type === "REEL" || post.media.some((m) => m.media.mimeType.startsWith("video/")));
     await notify(
       post.workspaceId,
       "post_published",
