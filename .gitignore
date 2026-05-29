@@ -10,6 +10,7 @@ dist/
 .claude/
 .mcp.json
 .playwright-mcp/
+.dev-uploads/
 
 # Local SQLite dev databases (never commit binary DBs)
 *.db
