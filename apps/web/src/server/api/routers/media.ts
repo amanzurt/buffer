@@ -106,6 +106,14 @@ export const mediaRouter = createTRPCRouter({
       });
       if (!asset) throw new TRPCError({ code: "NOT_FOUND" });
 
+      const usage = await ctx.db.postMedia.count({ where: { mediaId: input.id } });
+      if (usage > 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Esta imagen se usa en ${usage} post${usage !== 1 ? "s" : ""}. Quítala de esos posts antes de borrarla.`,
+        });
+      }
+
       await deleteObject(asset.r2Key);
       await ctx.db.mediaAsset.delete({ where: { id: input.id } });
       return { success: true };
