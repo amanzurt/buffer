@@ -64,6 +64,48 @@ async function createReelContainer(igUserId: string, videoUrl: string, caption: 
   return data.id;
 }
 
+async function createCarouselItemContainer(
+  igUserId: string,
+  media: { url: string; isVideo: boolean },
+  token: string,
+): Promise<string> {
+  const body: Record<string, string | boolean> = { is_carousel_item: true };
+  if (media.isVideo) {
+    body.media_type = "VIDEO";
+    body.video_url = media.url;
+  } else {
+    body.image_url = media.url;
+  }
+  const data = await graphPost<{ id: string }>(`/${igUserId}/media`, token, body);
+  return data.id;
+}
+
+async function createCarouselContainer(
+  igUserId: string,
+  childrenIds: string[],
+  caption: string,
+  token: string,
+): Promise<string> {
+  const data = await graphPost<{ id: string }>(`/${igUserId}/media`, token, {
+    media_type: "CAROUSEL",
+    children: childrenIds.join(","),
+    caption,
+  });
+  return data.id;
+}
+
+async function createStoryContainer(
+  igUserId: string,
+  media: { url: string; isVideo: boolean },
+  token: string,
+): Promise<string> {
+  const body: Record<string, string | boolean> = { media_type: "STORIES" };
+  if (media.isVideo) body.video_url = media.url;
+  else body.image_url = media.url;
+  const data = await graphPost<{ id: string }>(`/${igUserId}/media`, token, body);
+  return data.id;
+}
+
 async function getContainerStatus(containerId: string, token: string): Promise<ContainerStatus> {
   const data = await graphGet<{ status_code: ContainerStatus }>(
     `/${containerId}?fields=status_code`,
@@ -247,6 +289,34 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
       await waitForReelReady(creationId, token);
 
       console.log(`[publish-post] Publicando Reel ${creationId}…`);
+      igMediaId = await publishContainer(igUserId, creationId, token);
+
+    } else if (post.type === "CAROUSEL") {
+      console.log(`[publish-post] Creando ${post.media.length} items de carrusel para ${postId}…`);
+      const childrenIds: string[] = [];
+      for (const item of post.media) {
+        const isVideo = item.media.mimeType.startsWith("video/");
+        const childId = await createCarouselItemContainer(igUserId, { url: item.media.publicUrl, isVideo }, token);
+        if (isVideo) await waitForReelReady(childId, token);
+        childrenIds.push(childId);
+      }
+
+      const creationId = await createCarouselContainer(igUserId, childrenIds, post.caption, token);
+      await db.scheduledPost.update({ where: { id: postId }, data: { igContainerId: creationId } });
+
+      console.log(`[publish-post] Publicando carrusel ${creationId}…`);
+      igMediaId = await publishContainer(igUserId, creationId, token);
+
+    } else if (post.type === "STORY") {
+      const isVideo = firstMedia.mimeType.startsWith("video/");
+      console.log(`[publish-post] Creando container Story (${isVideo ? "video" : "imagen"}) para ${postId}…`);
+      const creationId = await createStoryContainer(igUserId, { url: firstMedia.publicUrl, isVideo }, token);
+
+      await db.scheduledPost.update({ where: { id: postId }, data: { igContainerId: creationId } });
+
+      if (isVideo) await waitForReelReady(creationId, token);
+
+      console.log(`[publish-post] Publicando Story ${creationId}…`);
       igMediaId = await publishContainer(igUserId, creationId, token);
 
     } else {

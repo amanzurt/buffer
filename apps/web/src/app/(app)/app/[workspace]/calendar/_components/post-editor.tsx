@@ -35,14 +35,24 @@ function toLocalDatetimeValue(d: Date): string {
 export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, defaultDate, postId }: Props) {
   const isEditing = !!postId;
 
+  type PostType = "FEED_IMAGE" | "CAROUSEL" | "REEL" | "STORY";
+
   const [accountId, setAccountId] = useState("");
-  const [postType, setPostType] = useState<"FEED_IMAGE" | "REEL">("FEED_IMAGE");
+  const [postType, setPostType] = useState<PostType>("FEED_IMAGE");
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [firstComment, setFirstComment] = useState("");
-  const [media, setMedia] = useState<MediaAsset | null>(null);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
   const [scheduledAt, setScheduledAt] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const TYPE_META: Record<PostType, { label: string; accept: "image" | "video" | "any"; max: number }> = {
+    FEED_IMAGE: { label: "📸 Imagen", accept: "image", max: 1 },
+    CAROUSEL: { label: "🎠 Carrusel", accept: "image", max: 10 },
+    REEL: { label: "🎬 Reel", accept: "video", max: 1 },
+    STORY: { label: "📲 Story", accept: "any", max: 1 },
+  };
+  const typeMeta = TYPE_META[postType];
 
   const { data: existingPost } = trpc.post.get.useQuery(
     { id: postId!, workspaceId },
@@ -61,13 +71,12 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
     if (!open) return;
     if (isEditing && existingPost) {
       setAccountId(existingPost.igAccountId);
-      setPostType(existingPost.type as "FEED_IMAGE" | "REEL");
+      setPostType(existingPost.type as PostType);
       setCaption(existingPost.caption);
       setHashtags((existingPost.caption.match(/#\w+/g) ?? []).map((t) => t.toLowerCase()));
       setFirstComment(existingPost.firstComment ?? "");
       setScheduledAt(toLocalDatetimeValue(new Date(existingPost.scheduledAt)));
-      const firstMedia = existingPost.media[0]?.media as MediaAsset | undefined;
-      setMedia(firstMedia ?? null);
+      setMedia(existingPost.media.map((m) => m.media as MediaAsset));
     } else if (!isEditing) {
       const base = defaultDate ?? new Date(Date.now() + 15 * 60 * 1000);
       setScheduledAt(toLocalDatetimeValue(base));
@@ -75,14 +84,18 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
       setCaption("");
       setHashtags([]);
       setFirstComment("");
-      setMedia(null);
+      setMedia([]);
     }
     setValidationError(null);
   }, [open, isEditing, existingPost, defaultDate]);
 
   function validate(): string | null {
     if (!accountId) return "Selecciona una cuenta de Instagram";
-    if (!media) return "Sube un archivo de media";
+    if (media.length === 0) return "Sube al menos un archivo de media";
+    if (postType === "CAROUSEL" && media.length < 2)
+      return "Un carrusel necesita al menos 2 imágenes";
+    if (media.length > typeMeta.max)
+      return `Máximo ${typeMeta.max} archivo${typeMeta.max !== 1 ? "s" : ""} para este tipo`;
     if (!caption.trim()) return "Escribe un caption";
     if (!scheduledAt) return "Selecciona una fecha y hora";
     if (new Date(scheduledAt).getTime() < Date.now() + 4 * 60 * 1000)
@@ -104,7 +117,7 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
           hashtags: hashtags.join(" "),
           firstComment: firstComment.trim() || undefined,
           scheduledAt: new Date(scheduledAt).toISOString(),
-          mediaIds: media ? [media.id] : undefined,
+          mediaIds: media.length > 0 ? media.map((m) => m.id) : undefined,
         });
       } else {
         await createPost.mutateAsync({
@@ -115,7 +128,7 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
           hashtags: hashtags.join(" "),
           firstComment: firstComment.trim() || undefined,
           scheduledAt: new Date(scheduledAt).toISOString(),
-          mediaIds: media ? [media.id] : [],
+          mediaIds: media.map((m) => m.id),
         });
       }
       onSuccess?.();
@@ -151,11 +164,11 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
           {!isEditing && (
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">Tipo</label>
-              <div className="flex gap-2">
-                {(["FEED_IMAGE", "REEL"] as const).map((t) => (
+              <div className="flex flex-wrap gap-2">
+                {(["FEED_IMAGE", "CAROUSEL", "REEL", "STORY"] as const).map((t) => (
                   <button
                     key={t}
-                    onClick={() => setPostType(t)}
+                    onClick={() => { setPostType(t); setMedia([]); }}
                     className={[
                       "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                       postType === t
@@ -163,7 +176,7 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
                         : "border-gray-200 text-gray-600 hover:border-gray-300",
                     ].join(" ")}
                   >
-                    {t === "FEED_IMAGE" ? "📸 Imagen" : "🎬 Reel"}
+                    {TYPE_META[t].label}
                   </button>
                 ))}
               </div>
@@ -174,26 +187,42 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
           <AccountSelector accounts={accounts} value={accountId} onChange={setAccountId} disabled={isEditing} />
 
           {/* Media */}
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">Media</label>
-            {media ? (
-              <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-                {media.mimeType.startsWith("image/") ? (
-                  <img src={media.publicUrl} alt={media.filename} className="h-10 w-10 rounded object-cover" />
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-600">
+              Media
+              {postType === "CAROUSEL" && (
+                <span className="ml-1 text-gray-400">({media.length}/{typeMeta.max} · mín. 2)</span>
+              )}
+            </label>
+
+            {media.map((m, i) => (
+              <div key={m.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                {m.mimeType.startsWith("image/") ? (
+                  <img src={m.publicUrl} alt={m.filename} className="h-10 w-10 rounded object-cover" />
                 ) : (
                   <div className="flex h-10 w-10 items-center justify-center rounded bg-gray-200 text-lg">🎬</div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-gray-700 truncate">{media.filename}</p>
-                  <p className="text-xs text-gray-400">{(media.sizeBytes / 1024 / 1024).toFixed(1)} MB</p>
+                  <p className="text-xs font-medium text-gray-700 truncate">
+                    {postType === "CAROUSEL" && <span className="text-gray-400">{i + 1}. </span>}
+                    {m.filename}
+                  </p>
+                  <p className="text-xs text-gray-400">{(m.sizeBytes / 1024 / 1024).toFixed(1)} MB</p>
                 </div>
-                <button onClick={() => setMedia(null)} className="text-xs text-red-500 hover:text-red-700">Quitar</button>
+                <button
+                  onClick={() => setMedia((prev) => prev.filter((x) => x.id !== m.id))}
+                  className="text-xs text-red-500 hover:text-red-700"
+                >
+                  Quitar
+                </button>
               </div>
-            ) : (
+            ))}
+
+            {media.length < typeMeta.max && (
               <MediaDropzone
                 workspaceId={workspaceId}
-                accept={postType === "REEL" ? "video" : "image"}
-                onUpload={setMedia}
+                accept={typeMeta.accept}
+                onUpload={(asset) => setMedia((prev) => [...prev, asset])}
               />
             )}
           </div>
