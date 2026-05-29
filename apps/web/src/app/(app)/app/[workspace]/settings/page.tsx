@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import { WorkspaceSettingsForm } from "./_components/workspace-settings-form";
+import { MembersSection } from "./_components/members-section";
 
 interface Props {
   params: Promise<{ workspace: string }>;
@@ -19,7 +20,9 @@ export default async function SettingsPage({ params }: Props) {
 
   if (!workspace || workspace.memberships.length === 0) notFound();
 
-  const isOwner = workspace.memberships[0]?.role === "OWNER";
+  const role = workspace.memberships[0]?.role;
+  const isOwner = role === "OWNER";
+  const canManage = role === "OWNER" || role === "ADMIN";
 
   return (
     <div className="p-6 max-w-2xl">
@@ -35,6 +38,8 @@ export default async function SettingsPage({ params }: Props) {
           canEdit={isOwner}
         />
       </section>
+
+      <MembersSection workspaceId={workspace.id} canManage={canManage} />
 
       <section className="bg-white rounded-xl border border-gray-100 p-6">
         <h2 className="text-sm font-semibold text-gray-700 mb-1">Zona de peligro</h2>

@@ -6,6 +6,7 @@ import { mediaRouter } from "@/server/api/routers/media";
 import { postRouter } from "@/server/api/routers/post";
 import { notificationRouter } from "@/server/api/routers/notification";
 import { templateRouter } from "@/server/api/routers/template";
+import { memberRouter } from "@/server/api/routers/member";
 
 export const appRouter = createTRPCRouter({
   workspace: workspaceRouter,
@@ -15,6 +16,7 @@ export const appRouter = createTRPCRouter({
   post: postRouter,
   notification: notificationRouter,
   template: templateRouter,
+  member: memberRouter,
 });
 
 export type AppRouter = typeof appRouter;
