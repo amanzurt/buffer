@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin, { type DateClickArg } from "@fullcalendar/interaction";
 import type { EventDropArg, EventClickArg, EventInput } from "@fullcalendar/core";
 import { trpc } from "@/lib/trpc/client";
@@ -62,9 +63,11 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
   }));
 
   const handleDateClick = useCallback((arg: DateClickArg) => {
-    const d = arg.date;
-    if (d.getTime() < Date.now() - 60_000) return;
-    d.setHours(new Date().getHours() + 1, 0, 0, 0);
+    const d = new Date(arg.date);
+    // In month view the slot is midnight (allDay) → default to next round hour.
+    // In week/day (timeGrid) the click carries the precise slot time → keep it.
+    const isAllDaySlot = arg.allDay || (d.getHours() === 0 && d.getMinutes() === 0);
+    if (isAllDaySlot) d.setHours(new Date().getHours() + 1, 0, 0, 0);
     if (d.getTime() < Date.now() + 5 * 60_000) d.setTime(Date.now() + 10 * 60_000);
     setEditPostId(undefined);
     setDefaultDate(d);
@@ -136,7 +139,7 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
       {/* FullCalendar */}
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden fc-buffer">
         <FullCalendar
-          plugins={[dayGridPlugin, interactionPlugin]}
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           locale="es"
           firstDay={1}
@@ -144,12 +147,15 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
           headerToolbar={{
             left: "prev,next today",
             center: "title",
-            right: "",
+            right: "dayGridMonth,timeGridWeek,timeGridDay",
           }}
           events={events}
           editable={hasActiveAccounts}
           droppable={false}
           selectable={false}
+          nowIndicator
+          slotMinTime="06:00:00"
+          slotMaxTime="24:00:00"
           dateClick={hasActiveAccounts ? handleDateClick : undefined}
           eventClick={handleEventClick}
           eventDrop={handleEventDrop}
@@ -163,7 +169,7 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
           dayMaxEvents={3}
           moreLinkText={(n) => `+${n} más`}
           noEventsText="Sin posts este período"
-          buttonText={{ today: "Hoy" }}
+          buttonText={{ today: "Hoy", month: "Mes", week: "Semana", day: "Día" }}
         />
       </div>
 
