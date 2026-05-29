@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AccountSelector } from "./account-selector";
+import { PostPreview } from "./post-preview";
 import { MediaDropzone } from "@/components/media-dropzone";
 import { CaptionEditor } from "@/components/caption-editor";
 import { trpc } from "@/lib/trpc/client";
@@ -137,6 +138,7 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
     }
   }
 
+  const selectedAccount = accounts.find((a) => a.id === accountId);
   const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending;
   const canDelete = isEditing && existingPost &&
     ["DRAFT", "SCHEDULED", "FAILED", "CANCELED"].includes(existingPost.status);
@@ -160,6 +162,18 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Vista previa */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">Vista previa</label>
+            <PostPreview
+              username={selectedAccount?.username ?? ""}
+              avatarUrl={selectedAccount?.profilePictureUrl}
+              media={media}
+              caption={caption}
+              type={postType}
+            />
+          </div>
+
           {/* Tipo */}
           {!isEditing && (
             <div className="space-y-1">
