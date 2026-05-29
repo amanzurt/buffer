@@ -145,7 +145,32 @@ function decryptToken(enc: string, keyHex: string): string {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
-// ── In-app notifications ──────────────────────────────────────────────────────
+// ── Email ──────────────────────────────────────────────────────────────────
+
+const EMAIL_FROM = process.env.EMAIL_FROM ?? "noreply@localhost";
+const RESEND_KEY = process.env.AUTH_RESEND_KEY;
+// Only hit Resend when explicitly opted in AND a key exists. Otherwise (dev)
+// log the email to the terminal — same philosophy as the auth magic-link bypass.
+const SEND_REAL_EMAILS = process.env.RESEND_SEND_REAL_EMAILS === "true" && !!RESEND_KEY;
+
+async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  if (!SEND_REAL_EMAILS) {
+    console.log(`📧 [DEV email] → ${to} · ${subject}`);
+    return;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to, subject, html }),
+    });
+    if (!res.ok) console.warn(`[email] Resend respondió ${res.status}`);
+  } catch (e: any) {
+    console.warn(`[email] error enviando a ${to}: ${e.message}`);
+  }
+}
+
+// ── Notifications (in-app + email) ────────────────────────────────────────────
 
 async function notify(
   workspaceId: string,
@@ -158,6 +183,23 @@ async function notify(
     await db.notification.create({ data: { workspaceId, type, title, body, postId } });
   } catch (e: any) {
     console.warn(`[publish-post] No se pudo crear notificación: ${e.message}`);
+  }
+
+  // Email the workspace members.
+  try {
+    const members = await db.membership.findMany({
+      where: { workspaceId },
+      include: { user: { select: { email: true } } },
+    });
+    const html = `<div style="font-family:sans-serif"><h2>${title}</h2><p>${body}</p></div>`;
+    await Promise.all(
+      members
+        .map((m) => m.user.email)
+        .filter((email): email is string => !!email)
+        .map((email) => sendEmail(email, title, html)),
+    );
+  } catch (e: any) {
+    console.warn(`[publish-post] No se pudo enviar email: ${e.message}`);
   }
 }
 
