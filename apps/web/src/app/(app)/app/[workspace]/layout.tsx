@@ -22,7 +22,7 @@ export default async function WorkspaceLayout({ children, params }: Props) {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar workspaceSlug={slug} workspaceName={workspace.name} />
+      <Sidebar workspaceSlug={slug} workspaceName={workspace.name} workspaceId={workspace.id} />
       <main className="flex-1 bg-gray-50">{children}</main>
     </div>
   );

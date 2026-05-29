@@ -103,6 +103,22 @@ function decryptToken(enc: string, keyHex: string): string {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
 
+// ── In-app notifications ──────────────────────────────────────────────────────
+
+async function notify(
+  workspaceId: string,
+  type: "post_published" | "post_failed",
+  title: string,
+  body: string,
+  postId: string,
+): Promise<void> {
+  try {
+    await db.notification.create({ data: { workspaceId, type, title, body, postId } });
+  } catch (e: any) {
+    console.warn(`[publish-post] No se pudo crear notificación: ${e.message}`);
+  }
+}
+
 // ── Reel polling ──────────────────────────────────────────────────────────────
 
 const REEL_POLL_INTERVAL_MS = 5_000;
@@ -195,6 +211,13 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
         metadata: JSON.stringify({ igMediaId: fakeMediaId, type: post.type, dryRun: true, account: post.igAccount.username }),
       },
     });
+    await notify(
+      post.workspaceId,
+      "post_published",
+      `Post publicado en @${post.igAccount.username}`,
+      post.caption.slice(0, 80),
+      postId,
+    );
     console.log(`✅ [publish-post] DRY-RUN: post ${postId} marcado PUBLISHED — igMediaId: ${fakeMediaId}`);
     return;
   }
@@ -258,6 +281,14 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
       },
     });
 
+    await notify(
+      post.workspaceId,
+      "post_published",
+      `Post publicado en @${post.igAccount.username}`,
+      post.caption.slice(0, 80),
+      postId,
+    );
+
     console.log(`✅ [publish-post] Post ${postId} publicado — igMediaId: ${igMediaId}`);
 
   } catch (err: any) {
@@ -272,6 +303,19 @@ export async function processPublishPost(job: Job<PublishPostJobData>): Promise<
         retryCount: { increment: 1 },
       },
     });
+
+    // Notificar solo en el fallo definitivo (permanente o último reintento),
+    // para no spamear en cada reintento transitorio.
+    const isLastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    if (permanent || isLastAttempt) {
+      await notify(
+        post.workspaceId,
+        "post_failed",
+        `Falló la publicación en @${post.igAccount.username}`,
+        err.message?.slice(0, 120) ?? "Error desconocido",
+        postId,
+      );
+    }
 
     if (permanent) {
       // No relanzar → BullMQ NO reintentará

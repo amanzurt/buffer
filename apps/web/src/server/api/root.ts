@@ -4,6 +4,7 @@ import { billingRouter } from "@/server/api/routers/billing";
 import { instagramRouter } from "@/server/api/routers/instagram";
 import { mediaRouter } from "@/server/api/routers/media";
 import { postRouter } from "@/server/api/routers/post";
+import { notificationRouter } from "@/server/api/routers/notification";
 
 export const appRouter = createTRPCRouter({
   workspace: workspaceRouter,
@@ -11,6 +12,7 @@ export const appRouter = createTRPCRouter({
   instagram: instagramRouter,
   media: mediaRouter,
   post: postRouter,
+  notification: notificationRouter,
 });
 
 export type AppRouter = typeof appRouter;

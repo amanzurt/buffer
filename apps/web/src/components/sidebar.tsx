@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Calendar, LayoutDashboard, Settings, Instagram, LogOut } from "lucide-react";
+import { NotificationBell } from "@/components/notification-bell";
 
 interface SidebarProps {
   workspaceSlug: string;
   workspaceName: string;
+  workspaceId: string;
 }
 
-export function Sidebar({ workspaceSlug, workspaceName }: SidebarProps) {
+export function Sidebar({ workspaceSlug, workspaceName, workspaceId }: SidebarProps) {
   const base = `/app/${workspaceSlug}`;
   const pathname = usePathname();
 
@@ -22,11 +24,14 @@ export function Sidebar({ workspaceSlug, workspaceName }: SidebarProps) {
 
   return (
     <aside className="w-56 min-h-screen border-r border-gray-100 bg-white flex flex-col">
-      <div className="px-4 py-5 border-b border-gray-100">
-        <span className="font-semibold text-sm text-gray-900 truncate block">
-          {workspaceName}
-        </span>
-        <span className="text-xs text-gray-400">Buffer</span>
+      <div className="px-4 py-5 border-b border-gray-100 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="font-semibold text-sm text-gray-900 truncate block">
+            {workspaceName}
+          </span>
+          <span className="text-xs text-gray-400">Buffer</span>
+        </div>
+        <NotificationBell workspaceId={workspaceId} />
       </div>
       <nav className="flex-1 px-2 py-4 space-y-0.5">
         {navItems.map(({ href, icon: Icon, label, exact }) => {
