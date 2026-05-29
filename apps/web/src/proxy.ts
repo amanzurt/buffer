@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Middleware runs on the Edge Runtime where PrismaClient cannot run, so we
-// can't read the database session here. We only do coarse gating: redirect to
-// /login when the session cookie is absent. The real authorization check runs
-// in the Node-runtime server components (which call auth() and verify the
-// session against the database).
+// Next.js 16: the `proxy` convention (formerly `middleware`). Runs on the Node
+// runtime. We keep it to coarse gating only — redirect to /login when the
+// session cookie is absent — so it stays cheap and DB-free. The real
+// authorization check runs in the Node-runtime server components (which call
+// auth() and verify the session against the database).
 const SESSION_COOKIE = "authjs.session-token";
 const SECURE_SESSION_COOKIE = "__Secure-authjs.session-token";
 
-export default function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const isAppRoute = path.startsWith("/app");
 
