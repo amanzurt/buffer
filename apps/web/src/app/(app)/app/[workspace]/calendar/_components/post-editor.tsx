@@ -22,6 +22,7 @@ interface Props {
   onSuccess?: () => void;
   workspaceId: string;
   accounts: Account[];
+  canApprove?: boolean;
   defaultDate?: Date;
   postId?: string;
 }
@@ -34,7 +35,7 @@ function toLocalDatetimeValue(d: Date): string {
   );
 }
 
-export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, defaultDate, postId }: Props) {
+export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, canApprove = false, defaultDate, postId }: Props) {
   const isEditing = !!postId;
 
   type PostType = "FEED_IMAGE" | "CAROUSEL" | "REEL" | "STORY";
@@ -68,6 +69,14 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
     onError: (err) => { setValidationError(err.message); },
   });
   const duplicatePost = trpc.post.duplicate.useMutation({
+    onSuccess: () => { onSuccess?.(); },
+    onError: (err) => { setValidationError(err.message); },
+  });
+  const approvePost = trpc.post.approve.useMutation({
+    onSuccess: () => { onSuccess?.(); },
+    onError: (err) => { setValidationError(err.message); },
+  });
+  const rejectPost = trpc.post.reject.useMutation({
     onSuccess: () => { onSuccess?.(); },
     onError: (err) => { setValidationError(err.message); },
   });
@@ -144,7 +153,8 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
   }
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
-  const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending || duplicatePost.isPending;
+  const isPending = createPost.isPending || updatePost.isPending || deletePost.isPending || duplicatePost.isPending || approvePost.isPending || rejectPost.isPending;
+  const isPendingApproval = isEditing && existingPost?.status === "PENDING_APPROVAL";
   const canDelete = isEditing && existingPost &&
     ["DRAFT", "SCHEDULED", "FAILED", "CANCELED"].includes(existingPost.status);
   const minDatetime = toLocalDatetimeValue(new Date(Date.now() + 5 * 60 * 1000));
@@ -294,6 +304,34 @@ export function PostEditor({ open, onClose, onSuccess, workspaceId, accounts, de
 
         {/* Footer */}
         <div className="border-t border-gray-100 px-5 py-4 space-y-2">
+          {isPendingApproval && (
+            <div className="rounded-lg border border-purple-200 bg-purple-50 px-3 py-2">
+              <p className="text-xs font-medium text-purple-800">⏳ Pendiente de aprobación</p>
+              {canApprove ? (
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => approvePost.mutate({ id: postId!, workspaceId })}
+                    disabled={isPending}
+                    className="flex-1 rounded-lg bg-green-600 py-1.5 text-xs font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+                  >
+                    Aprobar y programar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const reason = prompt("Motivo del rechazo (opcional):") ?? undefined;
+                      rejectPost.mutate({ id: postId!, workspaceId, reason });
+                    }}
+                    disabled={isPending}
+                    className="flex-1 rounded-lg border border-red-200 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-purple-600">Un aprobador debe revisarlo antes de programarse.</p>
+              )}
+            </div>
+          )}
           <div className="flex gap-3">
             <button onClick={onClose} className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
               Cancelar

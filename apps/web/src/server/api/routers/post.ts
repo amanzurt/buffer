@@ -67,6 +67,11 @@ export const postRouter = createTRPCRouter({
         where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
       });
       if (!membership) throw new TRPCError({ code: "FORBIDDEN" });
+      if (membership.role === "CLIENT") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Los clientes no pueden crear posts" });
+      }
+      // EDITORs submit for approval; OWNER/ADMIN/APPROVER schedule directly.
+      const needsApproval = membership.role === "EDITOR";
 
       if (!checkRateLimit(`post.create:${input.workspaceId}`, 20, 60_000)) {
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Demasiadas solicitudes. Espera un momento." });
@@ -95,24 +100,28 @@ export const postRouter = createTRPCRouter({
           hashtags: input.hashtags,
           firstComment: input.firstComment,
           scheduledAt,
-          status: "SCHEDULED",
+          status: needsApproval ? "PENDING_APPROVAL" : "SCHEDULED",
           media: {
             create: input.mediaIds.map((mediaId, order) => ({ mediaId, order })),
           },
         },
       });
 
-      const bullJobId = await enqueuePublishPost(post.id, scheduledAt);
-      const updated = await ctx.db.scheduledPost.update({
-        where: { id: post.id },
-        data: { bullJobId },
-      });
+      // Only schedule the publish job once it's approved.
+      let updated = post;
+      if (!needsApproval) {
+        const bullJobId = await enqueuePublishPost(post.id, scheduledAt);
+        updated = await ctx.db.scheduledPost.update({
+          where: { id: post.id },
+          data: { bullJobId },
+        });
+      }
 
       await ctx.db.auditLog.create({
         data: {
           workspaceId: input.workspaceId,
           userId: ctx.userId,
-          action: "post.created",
+          action: needsApproval ? "post.submitted_for_approval" : "post.created",
           resourceId: post.id,
           metadata: JSON.stringify({ scheduledAt, type: input.type }),
         },
@@ -171,6 +180,75 @@ export const postRouter = createTRPCRouter({
         },
       });
 
+      return updated;
+    }),
+
+  approve: protectedProcedure
+    .input(z.object({ id: z.string(), workspaceId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const membership = await ctx.db.membership.findUnique({
+        where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
+      });
+      if (!membership || !["OWNER", "ADMIN", "APPROVER"].includes(membership.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso para aprobar posts" });
+      }
+
+      const post = await ctx.db.scheduledPost.findFirst({
+        where: { id: input.id, workspaceId: input.workspaceId },
+      });
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (post.status !== "PENDING_APPROVAL") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El post no está pendiente de aprobación" });
+      }
+
+      // Reschedule to the future if the original time already passed while waiting.
+      const minTime = Date.now() + 5 * 60 * 1000;
+      const scheduledAt = post.scheduledAt.getTime() < minTime ? new Date(minTime + 5 * 60 * 1000) : post.scheduledAt;
+
+      const bullJobId = await enqueuePublishPost(post.id, scheduledAt);
+      const updated = await ctx.db.scheduledPost.update({
+        where: { id: post.id },
+        data: { status: "SCHEDULED", scheduledAt, bullJobId },
+      });
+
+      await ctx.db.auditLog.create({
+        data: { workspaceId: input.workspaceId, userId: ctx.userId, action: "post.approved", resourceId: post.id },
+      });
+      return updated;
+    }),
+
+  reject: protectedProcedure
+    .input(z.object({ id: z.string(), workspaceId: z.string(), reason: z.string().max(280).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const membership = await ctx.db.membership.findUnique({
+        where: { userId_workspaceId: { userId: ctx.userId, workspaceId: input.workspaceId } },
+      });
+      if (!membership || !["OWNER", "ADMIN", "APPROVER"].includes(membership.role)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "No tienes permiso para rechazar posts" });
+      }
+
+      const post = await ctx.db.scheduledPost.findFirst({
+        where: { id: input.id, workspaceId: input.workspaceId },
+      });
+      if (!post) throw new TRPCError({ code: "NOT_FOUND" });
+      if (post.status !== "PENDING_APPROVAL") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "El post no está pendiente de aprobación" });
+      }
+
+      const updated = await ctx.db.scheduledPost.update({
+        where: { id: post.id },
+        data: { status: "DRAFT", errorMessage: input.reason?.trim() || null },
+      });
+
+      await ctx.db.auditLog.create({
+        data: {
+          workspaceId: input.workspaceId,
+          userId: ctx.userId,
+          action: "post.rejected",
+          resourceId: post.id,
+          metadata: input.reason ? JSON.stringify({ reason: input.reason }) : null,
+        },
+      });
       return updated;
     }),
 

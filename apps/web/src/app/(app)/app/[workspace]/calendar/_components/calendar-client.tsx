@@ -20,9 +20,11 @@ interface Props {
   workspaceId: string;
   workspaceSlug: string;
   accounts: Account[];
+  canApprove: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
+  PENDING_APPROVAL: "#a855f7", // purple
   SCHEDULED: "#6366f1",   // indigo
   PUBLISHING: "#f59e0b",  // amber
   PUBLISHED: "#22c55e",   // green
@@ -31,7 +33,17 @@ const STATUS_COLORS: Record<string, string> = {
   DRAFT: "#d1d5db",
 };
 
-export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) {
+const STATUS_LABELS: Record<string, string> = {
+  PENDING_APPROVAL: "Pendiente",
+  SCHEDULED: "Programado",
+  PUBLISHING: "Publicando",
+  PUBLISHED: "Publicado",
+  FAILED: "Fallido",
+  CANCELED: "Cancelado",
+  DRAFT: "Borrador",
+};
+
+export function CalendarClient({ workspaceId, workspaceSlug, accounts, canApprove }: Props) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editPostId, setEditPostId] = useState<string | undefined>();
   const [defaultDate, setDefaultDate] = useState<Date | undefined>();
@@ -112,7 +124,7 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
             {Object.entries(STATUS_COLORS).map(([s, c]) => (
               <span key={s} className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-full" style={{ background: c }} />
-                {s.charAt(0) + s.slice(1).toLowerCase()}
+                {STATUS_LABELS[s] ?? s}
               </span>
             ))}
           </div>
@@ -182,6 +194,7 @@ export function CalendarClient({ workspaceId, workspaceSlug, accounts }: Props) 
         onClose={() => { setEditorOpen(false); setEditPostId(undefined); }}
         workspaceId={workspaceId}
         accounts={accounts}
+        canApprove={canApprove}
         defaultDate={defaultDate}
         postId={editPostId}
         onSuccess={() => { refetch(); setEditorOpen(false); setEditPostId(undefined); }}

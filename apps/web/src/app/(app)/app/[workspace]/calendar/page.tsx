@@ -20,6 +20,8 @@ export default async function CalendarPage({ params }: Props) {
   });
   if (!membership) notFound();
 
+  const canApprove = ["OWNER", "ADMIN", "APPROVER"].includes(membership.role);
+
   const accounts = await db.instagramAccount.findMany({
     where: { workspaceId: workspace.id },
     select: { id: true, username: true, profilePictureUrl: true, status: true },
@@ -31,6 +33,7 @@ export default async function CalendarPage({ params }: Props) {
       workspaceId={workspace.id}
       workspaceSlug={slug}
       accounts={accounts}
+      canApprove={canApprove}
     />
   );
 }
