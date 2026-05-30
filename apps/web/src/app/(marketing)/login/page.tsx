@@ -58,6 +58,37 @@ export default async function LoginPage({
             </button>
           </div>
         </form>
+
+        <div className="my-5 flex items-center gap-3 text-xs text-gray-400">
+          <span className="h-px flex-1 bg-gray-100" />o con contraseña<span className="h-px flex-1 bg-gray-100" />
+        </div>
+
+        <form action="/api/auth/password-login" method="POST">
+          <div className="space-y-3">
+            <input
+              type="email"
+              name="email"
+              required
+              autoComplete="email"
+              placeholder="tu@email.com"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+            />
+            <input
+              type="password"
+              name="password"
+              required
+              autoComplete="current-password"
+              placeholder="Contraseña"
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+            />
+            <button
+              type="submit"
+              className="w-full bg-white border border-gray-300 text-gray-800 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Entrar con contraseña
+            </button>
+          </div>
+        </form>
       </div>
     </main>
   );
